@@ -9,12 +9,15 @@
 --]]
 
 
+-- TODO: super()
 -- TODO: write complete tests (5.0 & 5.1)
 -- TODO: add class-methods
 -- TODO: add __r***__ meta-methods
 -- TODO: add finalize() method support
 -- TODO: write help and docs (tutorial)
 -- TODO: revise methods set for Class and Object
+-- TODO: add lua 5.1 meta-methods support (# ?)
+-- ?: who need trailing '__' in meta-methods' name?
 
 
 
@@ -84,32 +87,6 @@ local METAMETHODS = {
 
 
 local metatable = {}
-
-function metatable:__index(name)
-  local value
-  ----
-  -- instance method lookup
-  local class = rawget(self,INFO).__class
-  while class do
-    local info = rawget(class,INFO)
-    value = info.__methods[name]
-    if value then
-      return value
-    end
-    class = info.__super
-  end
-  ----
-  -- custom lookup
-  if name ~= '__index__' then
-    local index = self.__index__  -- recursion
-    if index then
-      value = {index(self,name)}
-      if value[1] then
-        return unpack(value)
-      end
-    end
-  end
-end
 
 for _, name in ipairs(METAMETHODS) do
   local name = name
@@ -181,6 +158,43 @@ function object2class(o,name)
   rawget(o,INFO).__methods = {}
 end
 
+-------------------
+local
+function findmethod(class,name)
+  while class do
+    local info = rawget(class,INFO)
+    value = info.__methods[name]
+    if value then
+      return value
+    end
+    class = info.__super
+  end
+end
+
+
+function metatable:__index(name)
+  local value
+  ----
+  -- instance method lookup
+  local class = rawget(self,INFO).__class
+  value = findmethod(class,name)
+  if value then
+    return value
+  end
+  ----
+  -- custom lookup
+  if name ~= '__index__' then
+    local index = self.__index__  -- recursion
+    if index then
+      value = {index(self,name)}
+      if value[1] then
+        return unpack(value)
+      end
+    end
+  end
+end
+-------------------
+
 
 
 
@@ -207,10 +221,53 @@ setsuper(Class,Object)
 
 
 
+---- INSTANCE METHODS REGISTRATION ----
+
+local
+function makesupermethod(self,name)
+  return function(...)
+    local method
+    local class = rawget(self,INFO).__class
+    local classinfo = rawget(class,INFO)
+    local super = classinfo.__super
+    if super then
+      method = findmethod(super,name)
+    end
+    assert(method, "no super method for "..classinfo.__name..":"..name)
+    return method(self,unpack(arg))
+  end
+end
+
+local methodsmeta = {}
+
+function methodsmeta:__call(object,...)
+  local env = getfenv(self.__f)
+  local metafenv = {
+    __newindex = env,
+    __index = env,
+  }
+  local fenv = {
+    super = makesupermethod(object,self.__name),
+  }
+  setmetatable(fenv,metafenv)
+  setfenv(self.__f,fenv)
+  local result = {self.__f(object,unpack(arg))}
+  setfenv(self.__f,env)
+  return unpack(result)
+end
+
 ----
 rawget(Class,INFO).__methods.__newindex__ =
   function(self,name,method)
-    rawget(self,INFO).__methods[name] = method
+    ----
+    --rawget(self,INFO).__methods[name] = method
+    ----
+    local t = {
+      __name = name,
+      __f = method,
+    }
+    setmetatable(t,methodsmeta)
+    rawget(self,INFO).__methods[name] = t
   end
 ----
 
@@ -301,7 +358,7 @@ end
 
 
 function Class:__call__(...)
-  local instance = self:new(unpack(arg))
+  local instance = self:new(unpack(arg))  --FIXME: self.CLASS:new() !!!
   setclass(instance,self)
   instance:initialize(unpack(arg))
   return instance
@@ -333,6 +390,8 @@ function Class:derives(class)
     return superclass == class or superclass:derives(class)
   end
 end
+
+--function Class:findmethod(name)
 
 --[[
 function Class:definition()

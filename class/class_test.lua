@@ -88,8 +88,26 @@ function TestClass:test_inherits()
   A, B, C = nil
 end
 
+function TestClass:test_super()
+  local x, y = {}, {}
+  class "A"
+  function A:f(x,y)
+    return x, y
+  end
+  class "B" (A)
+  function B:f(x,y)
+    return super(x,y)
+  end
+  local _x, _y = B():f(x,y)
+  assertEquals(x,_x)
+  assertEquals(y,_y)
+  A, B = nil
+end
+
 --function TestClass:test_index()
 --function TestClass:test_newindex()
+--function TestClass:test_Class_derives()
+--function TestClass:test_Class_findmethod()
 
 --function TestClass:test_?()
 
