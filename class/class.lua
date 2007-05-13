@@ -1,20 +1,21 @@
 
 --[[
-  Class library for lua 5.0
+  Class library for lua 5.0 (& 5.1)
 
   o  one metatable for all objects
   o  one special attribute `__info' holding all object's information
   o  Object and Class are two predefined classes
-  o  no multiple inheritance support
+  o  no multiple inheritance support (currently)
+  o  lua5.0 meta-methods support for objects
+  o  call super() function to access superclass method
 --]]
 
 
--- TODO: super()
 -- TODO: write complete tests (5.0 & 5.1)
 -- TODO: add class-methods
+-- TODO: simplify super() mechanism
 -- TODO: add __r***__ meta-methods
 -- TODO: add finalize() method support
--- TODO: write help and docs (tutorial)
 -- TODO: revise methods set for Class and Object
 -- TODO: add lua 5.1 meta-methods support (# ?)
 -- ?: who need trailing '__' in meta-methods' name?
@@ -88,18 +89,26 @@ local METAMETHODS = {
 
 local metatable = {}
 
+-- FIXME: Add to error message all lookup results
+
 for _, name in ipairs(METAMETHODS) do
   local name = name
   metatable[name] = function(...)
     local name = name..'__'
-    local a1, a2 = unpack(arg)
-    local o = isobject(a1) and a1 or a2
-    local method = o[name]
-    fassert(method, function()
-      local class = rawget(o,INFO).__class
-      return "no meta-method "..rawget(class,INFO).__name..":"..name
-    end)
-    return method(unpack(arg))
+    local a, b = unpack(arg)
+    local f
+    if isobject(a) then
+      f = a[name]
+    end
+    if not f and isobject(b) then
+      f = b[name]
+    end
+    fassert(f, function()
+                 local class = rawget(a,INFO).__class
+                 local cname = rawget(class,INFO).__name
+                 return 'meta-method not found: '..cname..':'..name
+               end)
+    return f(unpack(arg))
   end
 end
 
@@ -275,7 +284,7 @@ rawget(Class,INFO).__methods.__newindex__ =
 
 ---- OBJECT METHODS ----
 
-function Object:new()
+function Object:new()      -- FIXME: Object.CLASS:new()
   return table2object{}
 end
 
