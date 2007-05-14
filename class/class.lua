@@ -2,15 +2,22 @@
 --[[
   Class library for lua 5.0 (& 5.1)
 
+  http://class.luaforge.net/
+  license: public domain
+
   o  one metatable for all objects
   o  one special attribute `__info' holding all object's information
   o  Object and Class are two predefined classes
   o  no multiple inheritance support (currently)
-  o  lua5.0 meta-methods support for objects
-  o  call super() function to access superclass method
+  o  meta-methods support
+  o  super() function gives the access to superclass method
 --]]
 
 
+-- FIXME: fix method deletion
+-- FIXME: make class non-method attributes accessible
+-- ?: who need trailing '__' in meta-methods' name?
+-- FIXME: organize globals!
 -- TODO: write complete tests (5.0 & 5.1)
 -- TODO: add class-methods
 -- TODO: simplify super() mechanism
@@ -18,7 +25,8 @@
 -- TODO: add finalize() method support
 -- TODO: revise methods set for Class and Object
 -- TODO: add lua 5.1 meta-methods support (# ?)
--- ?: who need trailing '__' in meta-methods' name?
+-- FIXME: add to error message all meta-methods lookup results
+
 
 
 
@@ -88,8 +96,6 @@ local METAMETHODS = {
 
 
 local metatable = {}
-
--- FIXME: Add to error message all lookup results
 
 for _, name in ipairs(METAMETHODS) do
   local name = name
@@ -173,7 +179,7 @@ function findmethod(class,name)
   while class do
     local info = rawget(class,INFO)
     value = info.__methods[name]
-    if value then
+    if value ~= nil then
       return value
     end
     class = info.__super
@@ -187,7 +193,7 @@ function metatable:__index(name)
   -- instance method lookup
   local class = rawget(self,INFO).__class
   value = findmethod(class,name)
-  if value then
+  if value ~= nil then
     return value
   end
   ----
@@ -195,9 +201,9 @@ function metatable:__index(name)
   if name ~= '__index__' then
     local index = self.__index__  -- recursion
     if index then
-      value = {index(self,name)}
-      if value[1] then
-        return unpack(value)
+      value = index(self,name)
+      if value ~= nil then
+        return value
       end
     end
   end
@@ -250,6 +256,12 @@ end
 local methodsmeta = {}
 
 function methodsmeta:__call(object,...)
+  ----
+  -- WORKAROUND: catch deleted methods
+  if self.__f == nil then
+    error("attempt to call method '"..self.__name.."' (a nil value)",2)
+  end
+  ----
   local env = getfenv(self.__f)
   local metafenv = {
     __newindex = env,
