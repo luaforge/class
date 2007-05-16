@@ -3,49 +3,60 @@
   Class library for lua 5.0 (& 5.1)
 
   http://class.luaforge.net/
-  license: public domain
+  License: public domain
 
   o  one metatable for all objects
   o  one special attribute `__info' holding all object's information
   o  Object and Class are two predefined classes
-  o  no multiple inheritance support (currently)
   o  meta-methods support
   o  super() function gives the access to superclass method
+  o  no multiple inheritance support (currently)
 --]]
 
 
--- FIXME: fix method deletion
--- FIXME: make class non-method attributes accessible
--- ?: who need trailing '__' in meta-methods' name?
 -- FIXME: organize globals!
--- TODO: write complete tests (5.0 & 5.1)
 -- TODO: add class-methods
 -- TODO: simplify super() mechanism
--- TODO: add __r***__ meta-methods
+-- TODO: add __r*** meta-methods
 -- TODO: add finalize() method support
 -- TODO: revise methods set for Class and Object
 -- TODO: add lua 5.1 meta-methods support (# ?)
 -- FIXME: add to error message all meta-methods lookup results
+-- FIXME: protect objects' metatable
+-- ?: create weak class list?
+
+--[[ v.8 TODO
+  rid of __xxx__ meta-methods, correct API
+--]]
 
 
 
 
----- HELPER FUNCTIONS ----
 
-function wrongarg(n,expected,got)
+---- UTILITIES ----
+
+local u = {}
+
+function u.wrongarg(n,expected,got)
   return 'arg '..n..' expected to be '..expected..' (got '..tostring(got)..')'
 end
 
-function isname(name)
+local wrongarg = u.wrongarg
+
+function u.isname(name)
   return type(name)=='string' and string.find(name,'^[_%a][_%w]*$')
 end
 
+local isname = u.isname
+
+--[[
 function default(what,value)
   if value==nil then
     return what
   end
   return value
 end
+--]]
 
 function fassert(value,errmsg,...)
   if value then
@@ -70,9 +81,7 @@ end
 
 
 
-----
 local INFO = '__info'
-----
 
 
 
@@ -100,7 +109,7 @@ local metatable = {}
 for _, name in ipairs(METAMETHODS) do
   local name = name
   metatable[name] = function(...)
-    local name = name..'__'
+    ----
     local a, b = unpack(arg)
     local f
     if isobject(a) then
@@ -109,6 +118,20 @@ for _, name in ipairs(METAMETHODS) do
     if not f and isobject(b) then
       f = b[name]
     end
+    if not f then
+    ----
+    local name = name..'__'
+    --local a, b = unpack(arg)
+    --local f
+    if isobject(a) then
+      f = a[name]
+    end
+    if not f and isobject(b) then
+      f = b[name]
+    end
+    ----
+    end
+    ----
     fassert(f, function()
                  local class = rawget(a,INFO).__class
                  local cname = rawget(class,INFO).__name
@@ -173,7 +196,6 @@ function object2class(o,name)
   rawget(o,INFO).__methods = {}
 end
 
--------------------
 local
 function findmethod(class,name)
   while class do
@@ -187,6 +209,7 @@ function findmethod(class,name)
 end
 
 
+
 function metatable:__index(name)
   local value
   ----
@@ -198,8 +221,8 @@ function metatable:__index(name)
   end
   ----
   -- custom lookup
-  if name ~= '__index__' then
-    local index = self.__index__  -- recursion
+  if name ~= '__index' and name ~= '__index__' then
+    local index = self.__index or self.__index__  -- recursion
     if index then
       value = index(self,name)
       if value ~= nil then
@@ -208,7 +231,6 @@ function metatable:__index(name)
     end
   end
 end
--------------------
 
 
 
@@ -257,10 +279,12 @@ local methodsmeta = {}
 
 function methodsmeta:__call(object,...)
   ----
-  -- WORKAROUND: catch deleted methods
+  --[[
+  -- catch deleted methods
   if self.__f == nil then
     error("attempt to call method '"..self.__name.."' (a nil value)",2)
   end
+  --]]
   ----
   local env = getfenv(self.__f)
   local metafenv = {
@@ -277,20 +301,32 @@ function methodsmeta:__call(object,...)
   return unpack(result)
 end
 
-----
-rawget(Class,INFO).__methods.__newindex__ =
+rawget(Class,INFO).__methods.__newindex =
   function(self,name,method)
     ----
     --rawget(self,INFO).__methods[name] = method
     ----
+    --[[
     local t = {
       __name = name,
       __f = method,
     }
     setmetatable(t,methodsmeta)
     rawget(self,INFO).__methods[name] = t
+    --]]
+    ----
+    if type(method) == 'function' then
+      local t = {
+        __name = name,
+        __f = method,
+      }
+      setmetatable(t,methodsmeta)
+      rawget(self,INFO).__methods[name] = t
+    else
+      rawget(self,INFO).__methods[name] = method
+    end
+    ----
   end
-----
 
 
 
@@ -448,3 +484,5 @@ function class(name)
     setsuper(_class,superclass)
   end
 end
+
+classu = u
