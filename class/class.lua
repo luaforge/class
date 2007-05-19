@@ -9,13 +9,12 @@
   o  one special attribute `__info' holding all object's information
   o  Object and Class are two predefined classes
   o  meta-methods support
+  o  class-methods support
   o  super() function gives the access to superclass method
   o  no multiple inheritance support (currently)
 --]]
 
 
--- FIXME: organize globals!
--- TODO: add class-methods
 -- TODO: simplify super() mechanism
 -- TODO: add __r*** meta-methods
 -- TODO: add finalize() method support
@@ -58,7 +57,7 @@ function default(what,value)
 end
 --]]
 
-function fassert(value,errmsg,...)
+function u.assert(value,errmsg,...)
   if value then
     return value
   else
@@ -73,15 +72,28 @@ function fassert(value,errmsg,...)
   end
 end
 
-function fwrongarg(...)
+local assert = u.assert
+
+function u.fwrongarg(...)
   return function()
     return wrongarg(unpack(arg))
   end
 end
 
+local fwrongarg = u.fwrongarg
+
+
 
 
 local INFO = '__info'
+
+
+function u.isobject(o)
+  return type(o)=='table' and rawget(o,INFO)
+end
+
+local isobject = u.isobject
+
 
 
 
@@ -132,7 +144,7 @@ for _, name in ipairs(METAMETHODS) do
     ----
     end
     ----
-    fassert(f, function()
+    assert(f, function()
                  local class = rawget(a,INFO).__class
                  local cname = rawget(class,INFO).__name
                  return 'meta-method not found: '..cname..':'..name
@@ -148,19 +160,15 @@ end
 
 local
 function table2object(t)
-  fassert(type(t)=='table', fwrongarg(1,'table',t))
+  assert(type(t)=='table', fwrongarg(1,'table',t))
   rawset(t,INFO,{})
   setmetatable(t,metatable)
   return t
 end
 
-function isobject(o)
-  return type(o)=='table' and rawget(o,INFO)
-end
-
 local
 function object2table(o)
-  fassert(isobject(o), fwrongarg(1,'object',o))
+  assert(isobject(o), fwrongarg(1,'object',o))
   setmetatable(o,nil)
   rawset(o,INFO,nil)
   return o
@@ -168,39 +176,44 @@ end
 
 local
 function givename(o,name)
-  fassert(isobject(o), fwrongarg(1,'object',o))
-  fassert(isname(name), fwrongarg(2,'name',name))
+  assert(isobject(o), fwrongarg(1,'object',o))
+  assert(isname(name), fwrongarg(2,'name',name))
   rawget(o,INFO).__name = name
   getfenv(2)[name] = o
 end
 
 local
 function setclass(o,class)
-  fassert(isobject(o), fwrongarg(1,'object',o))
-  fassert(isobject(class), fwrongarg(2,'object',class))
+  assert(isobject(o), fwrongarg(1,'object',o))
+  assert(isobject(class), fwrongarg(2,'object',class))
   rawget(o,INFO).__class = class
 end
 
 local
 function setsuper(class,superclass)
-  fassert(isobject(class), fwrongarg(1,'object',class))
-  fassert(isobject(superclass), fwrongarg(2,'object',superclass))
+  assert(isobject(class), fwrongarg(1,'object',class))
+  assert(isobject(superclass), fwrongarg(2,'object',superclass))
   rawget(class,INFO).__super = superclass
 end
 
 local
 function object2class(o,name)
-  fassert(isobject(o), fwrongarg(1,'object',o))
-  fassert(isname(name), fwrongarg(2,'name',name))
+  assert(isobject(o), fwrongarg(1,'object',o))
+  assert(isname(name), fwrongarg(2,'name',name))
   givename(o,name)
   rawget(o,INFO).__methods = {}
+  ----
+  rawget(o,INFO).__isclass = true
+  rawget(o,INFO).__cmethods = {}
+  ----
 end
 
 local
-function findmethod(class,name)
+function findmethod(class,name,iscmethod)
+  local storage = iscmethod and '__cmethods' or '__methods'
   while class do
     local info = rawget(class,INFO)
-    value = info.__methods[name]
+    value = info[storage][name]
     if value ~= nil then
       return value
     end
@@ -212,6 +225,14 @@ end
 
 function metatable:__index(name)
   local value
+  ----
+  -- class method lookup
+  if rawget(self,INFO).__isclass then
+    value = findmethod(self,name,true)
+    if value ~= nil then
+      return value
+    end
+  end
   ----
   -- instance method lookup
   local class = rawget(self,INFO).__class
@@ -258,17 +279,22 @@ setsuper(Class,Object)
 
 
 
----- INSTANCE METHODS REGISTRATION ----
+---- INSTANCE/CLASS METHOD REGISTRATION ----
 
 local
-function makesupermethod(self,name)
+function makesupermethod(self,name,iscmethod)
   return function(...)
     local method
-    local class = rawget(self,INFO).__class
-    local classinfo = rawget(class,INFO)
+    local classinfo
+    if iscmethod then
+      classinfo = rawget(self,INFO)
+    else
+      local class = rawget(self,INFO).__class
+      classinfo = rawget(class,INFO)
+    end
     local super = classinfo.__super
     if super then
-      method = findmethod(super,name)
+      method = findmethod(super,name,iscmethod)
     end
     assert(method, "no super method for "..classinfo.__name..":"..name)
     return method(self,unpack(arg))
@@ -278,21 +304,13 @@ end
 local methodsmeta = {}
 
 function methodsmeta:__call(object,...)
-  ----
-  --[[
-  -- catch deleted methods
-  if self.__f == nil then
-    error("attempt to call method '"..self.__name.."' (a nil value)",2)
-  end
-  --]]
-  ----
   local env = getfenv(self.__f)
   local metafenv = {
     __newindex = env,
     __index = env,
   }
   local fenv = {
-    super = makesupermethod(object,self.__name),
+    super = makesupermethod(object,self.__name,self.__iscmethod),
   }
   setmetatable(fenv,metafenv)
   setfenv(self.__f,fenv)
@@ -301,40 +319,110 @@ function methodsmeta:__call(object,...)
   return unpack(result)
 end
 
-rawget(Class,INFO).__methods.__newindex =
-  function(self,name,method)
-    ----
-    --rawget(self,INFO).__methods[name] = method
-    ----
-    --[[
+local
+function storemethod(storage,name,iscmethod,method)
+  if type(method) == 'function' then
     local t = {
       __name = name,
       __f = method,
+      __iscmethod = iscmethod,
     }
     setmetatable(t,methodsmeta)
-    rawget(self,INFO).__methods[name] = t
-    --]]
-    ----
-    if type(method) == 'function' then
-      local t = {
-        __name = name,
-        __f = method,
-      }
-      setmetatable(t,methodsmeta)
-      rawget(self,INFO).__methods[name] = t
-    else
-      rawget(self,INFO).__methods[name] = method
-    end
-    ----
+    storage[name] = t
+  else
+    storage[name] = method
   end
+end
+
+rawget(Class,INFO).__methods.__newindex =
+  function(self,name,method)
+    storemethod(rawget(self,INFO).__methods,name,false,method)
+  end
+
+
+
+---- CLASS METHODS ----
+
+function Class:__call__(...)
+  local instance = self:new(unpack(arg))
+  instance:initialize(unpack(arg))
+  return instance
+end
+
+function Class:initialize(name,superclass)
+  assert(isname(name), fwrongarg(1,'name',name))
+  object2class(self,name)
+  superclass = superclass or Object
+  assert(isobject(superclass), fwrongarg(2,'object',superclass))
+  setsuper(self,superclass or Object)
+end
+
+function Class:name()
+  return rawget(self,INFO).__name
+end
+
+function Class:super()
+  return rawget(self,INFO).__super
+end
+
+function Class:classtable()
+  local t = {}
+  local mt = {}
+  function mt.__newindex(_,name,method)
+    storemethod(rawget(self,INFO).__cmethods,name,true,method)
+  end
+  setmetatable(t,mt)
+  return t
+end
+
+function Class:__tostring__()
+  return self:name()
+end
+
+function Class:derives(class)
+  local superclass = self:super()
+  if superclass then
+    return superclass == class or superclass:derives(class)
+  end
+end
+
+--function Class:findmethod(name)
+
+--[[
+function Class:definition()
+  local s = 'class "'..self:name()..'"'
+  local super = self:super()
+  if super and super ~= Object then
+    s = s..' ('..super:name()..')'
+  end
+  s = s..' do\n'
+  for name, _ in pairs(self) do
+    ....
+  end
+  ....
+  return 'class "'....'"'..super_s..' do\n'..
+    ..?..
+    'end'
+end
+--]]
+
+--Class:adopt(t,initialize)
 
 
 
 ---- OBJECT METHODS ----
 
-function Object:new()      -- FIXME: Object.CLASS:new()
-  return table2object{}
+-- class methods
+
+local Objectclass = Object:classtable()
+
+function Objectclass:new()
+  local o = table2object{}
+  setclass(o,self)
+  return o
 end
+
+-- instance methods
 
 function Object:initialize()
 end
@@ -409,66 +497,11 @@ end
 --]]
 
 --Object:totable()  -> table, info
---Object:__***__
 --Object:address()  --?
+--Object:superclasses()
 
 
 
-function Class:__call__(...)
-  local instance = self:new(unpack(arg))  --FIXME: self.CLASS:new() !!!
-  setclass(instance,self)
-  instance:initialize(unpack(arg))
-  return instance
-end
-
-function Class:initialize(name,superclass)
-  fassert(isname(name), fwrongarg(1,'name',name))
-  object2class(self,name)
-  superclass = superclass or Object
-  fassert(isobject(superclass), fwrongarg(2,'object',superclass))
-  setsuper(self,superclass or Object)
-end
-
-function Class:name()
-  return rawget(self,INFO).__name
-end
-
-function Class:super()
-  return rawget(self,INFO).__super
-end
-
-function Class:__tostring__()
-  return self:name()
-end
-
-function Class:derives(class)
-  local superclass = self:super()
-  if superclass then
-    return superclass == class or superclass:derives(class)
-  end
-end
-
---function Class:findmethod(name)
-
---[[
-function Class:definition()
-  local s = 'class "'..self:name()..'"'
-  local super = self:super()
-  if super and super ~= Object then
-    s = s..' ('..super:name()..')'
-  end
-  s = s..' do\n'
-  for name, _ in pairs(self) do
-    ....
-  end
-  ....
-  return 'class "'....'"'..super_s..' do\n'..
-    ..?..
-    'end'
-end
---]]
-
---Class:adopt(t,initialize)
 
 
 
@@ -477,10 +510,10 @@ end
 
 
 function class(name)
-  fassert(isname(name), fwrongarg(1,'name',name))
+  assert(isname(name), fwrongarg(1,'name',name))
   local _class = Class(name)
   return function(superclass)
-    fassert(isobject(superclass), fwrongarg(1,'object',superclass))
+    assert(isobject(superclass), fwrongarg(1,'object',superclass))
     setsuper(_class,superclass)
   end
 end

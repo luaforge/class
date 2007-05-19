@@ -168,6 +168,127 @@ function TestBasic:test_class_non_method_accessible()
 end
 
 
+---- CLASS-METHODS ----
+
+TestClassMethods = {}
+
+--[[
+function TestClassMethods:test_?()
+  ....
+end
+--]]
+
+function TestClassMethods:test_class_method_called()
+  class "A"
+  local Aclass = A:classtable()
+  function Aclass:f(x)
+    return self, x
+  end
+  local t = {}
+  local _self, _t = A:f(t)
+  assertEquals(_self,A)
+  assertEquals(_t,t)
+  A = nil
+end
+
+function TestClassMethods:test_no_class_method()
+  class "A"
+  local Aclass = A:classtable()
+  assertError(A.f)
+  A = nil
+end
+
+function TestClassMethods:test_class_method_derived()
+  class "A"
+  local Aclass = A:classtable()
+  function Aclass:f(x)
+    return self, x
+  end
+  class "B" (A)
+  local t = {}
+  local _self, _t = B:f(t)
+  assertEquals(_self,B)
+  assertEquals(_t,t)
+  A, B = nil
+end
+
+function TestClassMethods:test_deep_method_derived()
+  class "A"
+  local Aclass = A:classtable()
+  function Aclass:f(x)
+    return self, x
+  end
+  class "B" (A)
+  class "C" (B)
+  class "D" (C)
+  class "E" (D)
+  local t = {}
+  local _self, _t = E:f(t)
+  assertEquals(_self,E)
+  assertEquals(_t,t)
+  A, B, C, D, E = nil
+end
+
+function TestClassMethods:test_super_class_method_called()
+  class "A"
+  local Aclass = A:classtable()
+  function Aclass:f(x)
+    return self, x
+  end
+  class "B" (A)
+  local Bclass = B:classtable()
+  function Bclass:f(x)
+    return super(x)
+  end
+  local t = {}
+  local _self, _t = B:f(t)
+  assertEquals(_self,B)
+  assertEquals(_t,t)
+  A, B = nil
+end
+
+function TestClassMethods:test_Objects_super()
+  local Oclass = Object:classtable()
+  function Oclass:f()
+    super()
+  end
+  assertError(Object.f)
+  Oclass.f = nil
+end
+
+function TestClassMethods:test_super_failed()
+  class "A"
+  class "B" (A)
+  local Bclass = B:classtable()
+  function Bclass:f(x)
+    return super(x)
+  end
+  assertError(B.f)
+  A, B = nil
+end
+
+function TestClassMethods:test_deep_super_called()
+  class "A"
+  local Aclass = A:classtable()
+  function Aclass:f(x)
+    return self, x
+  end
+  class "B" (A)
+  class "C" (B)
+  class "D" (C)
+  class "E" (D)
+  local Eclass = E:classtable()
+  function Eclass:f(x)
+    return super(x)
+  end
+  local t = {}
+  local _self, _t = E:f(t)
+  assertEquals(_self,E)
+  assertEquals(_t,t)
+  A, B, C, D, E = nil
+end
+
+
 ---- META-METHODS ----
 
 TestMetaMethods = {}
@@ -434,6 +555,26 @@ end
 
 TestObject = {}
 
+--[[
+function TestObject:test_?()
+  ....
+end
+--]]
+
+function TestObject:test_new()
+  class "A"
+  local Aclass = A:classtable()
+  function Aclass:new(x)
+    local instance = super()
+    instance.x = x
+    return instance
+  end
+  local t = {}
+  local a = A(t)
+  assertEquals(a.x,t)
+  A = nil
+end
+
 function TestObject:test_index()
   assertError(Object().f)
   function Object:f()
@@ -537,8 +678,7 @@ end
 --]]
 
 function TestUtilities:test_wrongarg()
-  local s = classu.wrongarg(1,2,3)
-  assertEquals(type(s),'string')
+  assertEquals(type(classu.wrongarg(1,2,3)),'string')
 end
 
 function TestUtilities:test_isname()
@@ -566,6 +706,52 @@ function TestUtilities:test_isname()
   assert(not classu.isname('44'))
   assert(not classu.isname('*%&(@'))
 end
+
+function TestUtilities:test_assert()
+  assertError(classu.assert)
+  assertError(classu.assert,false,'')
+  assertError(classu.assert,false,function()
+                                    return ''
+                                  end)
+  local t = {}
+  local _t
+  assertError(classu.assert,false,function()
+                                    _t = t
+                                    return ''
+                                  end)
+  assertEquals(_t,t)
+  _t = nil
+  assertError(classu.assert,false,function(x)
+                                    _t = x
+                                    return ''
+                                  end,t)
+  assertEquals(_t,t)
+  _t = nil
+end
+
+function TestUtilities:test_fwrongarg()
+  assertEquals(type(classu.fwrongarg(1,2,3)()),'string')
+end
+
+function TestUtilities:test_isobject()
+  local isobject = classu.isobject
+  ----
+  assert(not isobject())
+  assert(not isobject(0))
+  assert(not isobject(true))
+  assert(not isobject(false))
+  assert(not isobject(function()end))
+  assert(not isobject(''))
+  assert(not isobject({}))
+  assert(isobject(Object))
+  assert(isobject(Class))
+  assert(isobject(Object()))
+  class "A"
+  assert(isobject(A))
+  assert(isobject(A()))
+  A = nil
+end
+
 
 
 
