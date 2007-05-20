@@ -8,20 +8,19 @@
   o  one metatable for all objects
   o  one special attribute `__info' holding all object's information
   o  Object and Class are two predefined classes
-  o  meta-methods support
-  o  class-methods support
-  o  super() function gives the access to superclass method
-  o  no multiple inheritance support (currently)
+  o  initializer and finalizer methods
+  o  meta-methods
+  o  class methods
+  o  super() function
+  o  no multiple inheritance (currently)
 --]]
 
 
--- TODO: simplify super() mechanism
--- TODO: add __r*** meta-methods
--- TODO: add finalize() method support
--- TODO: revise methods set for Class and Object
 -- TODO: add lua 5.1 meta-methods support (# ?)
 -- FIXME: add to error message all meta-methods lookup results
+-- FIXME: simplify super() mechanism
 -- FIXME: protect objects' metatable
+-- ?: add __r*** meta-methods
 -- ?: create weak class list?
 
 --[[ v.8 TODO
@@ -47,15 +46,6 @@ function u.isname(name)
 end
 
 local isname = u.isname
-
---[[
-function default(what,value)
-  if value==nil then
-    return what
-  end
-  return value
-end
---]]
 
 function u.assert(value,errmsg,...)
   if value then
@@ -161,8 +151,21 @@ end
 local
 function table2object(t)
   assert(type(t)=='table', fwrongarg(1,'table',t))
-  rawset(t,INFO,{})
+  local info = {}
+  rawset(t,INFO,info)
   setmetatable(t,metatable)
+
+  ----
+  local p = newproxy(true)
+  local mp = getmetatable(p)
+  function mp:__gc()
+    if rawget(t,INFO) == info then
+      t:finalize()
+    end
+  end
+  rawget(t,INFO).__proxy = p
+  ----
+
   return t
 end
 
@@ -406,7 +409,15 @@ function Class:definition()
 end
 --]]
 
---Class:adopt(t,initialize)
+function Class:adopt(t,initialize,...)
+  assert(type(t)=='table', wrongarg(1,'table',t))
+  local o = table2object(t)
+  setclass(o,self)
+  if initialize then
+    o:initialize(unpack(arg))
+  end
+  return o
+end
 
 
 
@@ -417,6 +428,9 @@ end
 local Objectclass = Object:classtable()
 
 function Objectclass:new()
+  ----
+  --return self:adopt{}
+  ----
   local o = table2object{}
   setclass(o,self)
   return o
@@ -425,6 +439,9 @@ end
 -- instance methods
 
 function Object:initialize()
+end
+
+function Object:finalize()
 end
 
 function Object:class()
@@ -458,6 +475,15 @@ end
 
 function Object:__tostring__()
   return 'instance of '..self:class():name()
+end
+
+function Object:__concat__(other)
+  if isobject(self) then
+    self = tostring(self)
+  elseif isobject(other) then
+    other = tostring(other)
+  end
+  return self..other
 end
 
 --[[
@@ -496,7 +522,17 @@ function Object:methods(listinherited)
 end
 --]]
 
---Object:totable()  -> table, info
+function Object:totable(finalize)
+  if finalize then
+    self:finalize()
+  end
+  setmetatable(self,nil)
+  local info = rawget(self,INFO)
+  rawset(self,INFO,nil)
+  return self, info
+end
+
+
 --Object:address()  --?
 --Object:superclasses()
 

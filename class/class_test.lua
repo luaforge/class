@@ -13,6 +13,12 @@ require('class')
 
 TestBasic = {}
 
+--[[
+function TestBasic:test_?()
+  ....
+end
+--]]
+
 function TestBasic:test_class_created()
   class "A"
   assert(A, "NOT A")
@@ -167,6 +173,20 @@ function TestBasic:test_class_non_method_accessible()
   A = nil
 end
 
+function TestBasic:test_finalizer_called()
+  class "A"
+  local t = {}
+  local _t
+  function A:finalize()
+    _t = t
+  end
+  A()
+  collectgarbage()
+  assertEquals(_t,t)
+  A = nil
+end
+
+
 
 ---- CLASS-METHODS ----
 
@@ -293,13 +313,18 @@ end
 
 TestMetaMethods = {}
 
+--[[
+function TestMetaMethods:test_?()
+  ....
+end
+--]]
+
 local binoperators = {}
 function binoperators.add(x,y) return x + y end
 function binoperators.sub(x,y) return x - y end
 function binoperators.mul(x,y) return x * y end
 function binoperators.div(x,y) return x / y end
 function binoperators.pow(x,y) return x ^ y end
-function binoperators.concat(x,y) return x..y end
 
 function TestMetaMethods:test_binoperators()
   local t = {}
@@ -451,6 +476,36 @@ function TestMetaMethods:test_tostring__()
     return "ABC"
   end
   assertEquals(tostring(A()),"ABC")
+  A = nil
+end
+----
+
+function TestMetaMethods:test_concat()
+  class "A"
+  function A:__concat(other)
+    return "ABC"
+  end
+  class "B"
+  assertEquals(A()..A(),'ABC')
+  assertEquals(A()..B(),'ABC')
+  assertEquals(type(B()..A()),'string')
+  assertEquals(A()..{},'ABC')
+  assertEquals({}..A(),'ABC')
+  A = nil
+end
+
+----
+function TestMetaMethods:test_concat__()
+  class "A"
+  function A:__concat__(other)
+    return "ABC"
+  end
+  class "B"
+  assertEquals(A()..A(),'ABC')
+  assertEquals(A()..B(),'ABC')
+  assertEquals(type(B()..A()),'string')
+  assertEquals(A()..{},'ABC')
+  assertEquals({}..A(),'ABC')
   A = nil
 end
 ----
@@ -621,10 +676,58 @@ function TestObject:test_inherits()
   A, B, C = nil
 end
 
+function TestObject:test_totable()
+  local isobject = classu.isobject
+  local t = {}
+  class "A"
+  local a = A()
+  a.x = t
+  assert(isobject(a))
+  local _a, info = a:totable()
+  assertEquals(_a,a)
+  assert(not isobject(a))
+  assertEquals(type(a),'table')
+  assertEquals(a.x,t)
+  A = nil
+end
+
+function TestObject:test_totable_finalize()
+  local t = {}
+  local _t
+  class "A"
+  function A:finalize()
+    _t = t
+  end
+  local a = A()
+  a:totable()
+  collectgarbage()
+  assertEquals(_t,nil)
+  local a2 = A()
+  a2:totable(true)
+  collectgarbage()
+  assertEquals(_t,t)
+  A = nil
+end
+
+------[[
+function TestObject:test_concat()
+  assertEquals(type(Object()..''),'string')
+  assertEquals(type(''..Object()),'string')
+end
+--]]
+
+
+
 
 ---- CLASS API ----
 
 TestClass = {}
+
+--[[
+function TestClass:test_?()
+  ....
+end
+--]]
 
 function TestClass:test_name()
   class "A"
@@ -663,8 +766,76 @@ function TestClass:test_derives()
   A, B, C = nil
 end
 
---function TestClass:test_initialize()  --name, superclass
---function TestClass:test_findmethod()
+function TestClass:test_adopt()
+  local t = {}
+  local u = {}
+  class "A"
+  function A:f()
+    return t
+  end
+  function A:g()
+    return self.x
+  end
+  local a = A:adopt {x = u}
+  assertEquals(a:f(),t)
+  assertEquals(a:g(),u)
+  A = nil
+end
+
+function TestClass:test_adopt_initialize()
+  local t = {}
+  class "A"
+  function A:initialize(x)
+    self.x = x
+  end
+  local a = A:adopt {}
+  assertEquals(a.x,nil)
+  local a2 = A:adopt({},true,t)
+  assertEquals(a2.x,t)
+  A = nil
+end
+
+function TestClass:test_initialize()
+  local _A = Class('A')
+  assert(A)
+  assertEquals(_A,A)
+  assertEquals(A:super(),Object)
+  local _B = Class('B',A)
+  assert(B)
+  assertEquals(_B,B)
+  assertEquals(B:super(),A)
+  A, B = nil
+end
+
+
+---- COMPLEX TESTS ----
+
+TestComplex = {}
+
+--[[
+function TestComplex:test_?()
+  ....
+end
+--]]
+
+function TestComplex:test_totable_adopt()
+  local t = {}
+  class "A"
+  function A:initialize()
+    self.x = t
+  end
+  function A:f()
+    return self.x
+  end
+  local a = A()
+  assertEquals(a:f(),t)
+  a:totable()
+  assertError(function() a:f() end)
+  A:adopt(a)
+  assertEquals(a:f(),t)
+  A = nil
+end
+
 
 
 ---- UTILITIES ----
