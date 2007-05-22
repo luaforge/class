@@ -22,6 +22,7 @@
 -- FIXME: protect objects' metatable
 -- ?: add __r*** meta-methods
 -- ?: create weak class list?
+-- !: comments?
 
 --[[ v.8 TODO
   rid of __xxx__ meta-methods, correct API
@@ -71,6 +72,16 @@ function u.fwrongarg(...)
 end
 
 local fwrongarg = u.fwrongarg
+
+
+
+function table.key(t,x)
+  for key, value in pairs(t) do
+    if value == x then
+      return key
+    end
+  end
+end
 
 
 
@@ -532,8 +543,44 @@ function Object:totable(finalize)
   return self, info
 end
 
+function Object:address()
+  local mt = getmetatable(self)
+  setmetatable(self,nil)
+  local s = tostring(self)
+  local _, _, s = string.find(s,'(0x%x+)$')
+  setmetatable(self,mt)
+  return s
+end
 
---Object:address()  --?
+function Object:bound(name)
+  local method = self[name]
+  return function(...)
+    return method(self,unpack(arg))
+  end
+end
+
+function Object:send(name,...)
+  local f = self:bound(name)
+  return f(unpack(arg))
+end
+
+function Object:instanceeval(f,...)
+  return f(self,unpack(arg))
+end
+
+--[[
+function Object:methods()
+  ....
+end
+--]]
+
+--[[
+function Object:vars()
+  ....
+end
+--]]
+
+
 --Object:superclasses()
 
 

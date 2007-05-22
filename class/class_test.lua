@@ -610,12 +610,6 @@ end
 
 TestObject = {}
 
---[[
-function TestObject:test_?()
-  ....
-end
---]]
-
 function TestObject:test_new()
   class "A"
   local Aclass = A:classtable()
@@ -709,10 +703,68 @@ function TestObject:test_totable_finalize()
   A = nil
 end
 
-------[[
 function TestObject:test_concat()
   assertEquals(type(Object()..''),'string')
   assertEquals(type(''..Object()),'string')
+end
+
+function TestObject:test_address()
+  class "A"
+  local addr = A():address()
+  assertEquals(type(addr),"string")
+  assert(string.find(addr,'0x%x+'))
+  A = nil
+end
+
+function TestObject:test_bound()
+  class "A"
+  function A:f(x)
+    return x
+  end
+  local t = {}
+  local f = A():bound('f')
+  assertEquals(f(),A():f())
+  A = nil
+end
+
+function TestObject:test_send()
+  local t = {}
+  class "A"
+  function A:f(x)
+    return x
+  end
+  assertEquals(A():send('f',t),A():f(t))
+  A = nil
+end
+
+function TestObject:test_instanceeval()
+  class "A"
+  local t = {}
+  local a = A()
+  assertEquals(a:instanceeval(function(self)
+                                return self
+                              end),
+               a)
+  assertEquals(a:instanceeval(function(self,x)
+                                return x
+                              end,t),
+               t)
+  A = nil
+end
+
+--[[
+function TestObject:test_methods()
+  class "A"
+  function A:f()
+  end
+  assert(table.key(A():methods(),'f'))
+  A = nil
+end
+--]]
+
+--[[
+function TestObject:test_?()
+  ....
 end
 --]]
 
@@ -842,12 +894,6 @@ end
 
 TestUtilities = {}
 
---[[
-function TestUtilities:test_?()
-  ....
-end
---]]
-
 function TestUtilities:test_wrongarg()
   assertEquals(type(classu.wrongarg(1,2,3)),'string')
 end
@@ -922,6 +968,19 @@ function TestUtilities:test_isobject()
   assert(isobject(A()))
   A = nil
 end
+
+function TestUtilities:test_table_key()
+  assertEquals(table.key({13,14,15},14),2)
+  assertEquals(table.key({13,a=14,15},14),'a')
+  assertEquals(table.key({13,14,15},16),nil)
+end
+
+--[[
+function TestUtilities:test_?()
+  ....
+end
+--]]
+
 
 
 
