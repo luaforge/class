@@ -762,6 +762,22 @@ function TestObject:test_methods()
 end
 --]]
 
+function TestObject:test_vars()
+  class "A"
+  local a = A()
+  local t = {}
+  a.x = {}
+  a[1] = {}
+  a[t] = {}
+  local vars = a:vars()
+  assertEquals(table.getn(vars),3)
+  assert(table.key(vars,'x'))
+  assert(table.key(vars,1))
+  assert(table.key(vars,t))
+  assertEquals(vars.__info,nil)
+  A = nil
+end
+
 --[[
 function TestObject:test_?()
   ....
@@ -973,6 +989,15 @@ function TestUtilities:test_table_key()
   assertEquals(table.key({13,14,15},14),2)
   assertEquals(table.key({13,a=14,15},14),'a')
   assertEquals(table.key({13,14,15},16),nil)
+end
+
+function TestUtilities:test_keys()
+  local u = {}
+  local t = {10, a=11, [u]=12}
+  local keys = table.keys(t)
+  assert(table.key(keys,1))
+  assert(table.key(keys,'a'))
+  assert(table.key(keys,u))
 end
 
 --[[

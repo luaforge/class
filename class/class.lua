@@ -75,12 +75,22 @@ local fwrongarg = u.fwrongarg
 
 
 
+
+
 function table.key(t,x)
   for key, value in pairs(t) do
     if value == x then
       return key
     end
   end
+end
+
+function table.keys(t)
+  local u = {}
+  for key in pairs(t) do
+    table.insert(u,key)
+  end
+  return u
 end
 
 
@@ -574,8 +584,25 @@ function Object:methods()
 end
 --]]
 
---[[
 function Object:vars()
+  local set = {}
+  for key in pairs(self) do
+    set[key] = true
+  end
+  set[INFO] = nil
+  return table.keys(set)
+end
+
+--[[
+function Object:next()
+  ....
+end
+
+function Object:pairs()
+  ....
+end
+
+function Object:ipairs()
   ....
 end
 --]]
